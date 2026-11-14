@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exactly Once</title>
+<style>
+  :root {
+    --bg: #F3F5F7; --paper: #FFFFFF; --ink: #000000; --red: #D7261E; --green: #00684A; --amber: #B45309;
+    --muted: #5B6168; --rule: #C9CED4;
+    --sans: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --fs: clamp(22px, 2.6vh, 36px);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: var(--fs);
+         font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* header */
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+           padding: 14px 32px 12px; border-bottom: 1px solid var(--ink); background: var(--paper); flex-wrap: wrap; }
+  .brand h1 { margin: 0; font-size: calc(var(--fs) * 1.7); font-weight: 800; letter-spacing: -0.5px; line-height: 1.05; }
+  .brand .motto { font-size: var(--fs); color: var(--muted); }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px 8px; justify-content: flex-end; max-width: 60%; }
+  .controls button { font: inherit; font-size: var(--fs); color: var(--muted); background: transparent;
+                     border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px 4px 6px; cursor: pointer;
+                     display: inline-flex; align-items: center; gap: 8px; line-height: 1.2; }
+  .controls button:hover { color: var(--ink); border-color: var(--ink); }
+  .controls button.on { color: var(--ink); border-color: var(--ink); }
+  .controls button:disabled { opacity: .45; cursor: default; }
+  kbd { font-family: var(--sans); font-size: var(--fs); font-weight: 700; color: var(--ink); background: var(--bg);
+        border: 1px solid var(--rule); border-radius: 4px; min-width: 1.4em; text-align: center; padding: 0 4px; }
+
+  /* banners */
+  .banner { padding: 4px 32px; font-size: var(--fs); font-weight: 600; border-bottom: 1px solid var(--ink); }
+  .banner.red { background: var(--red); color: #fff; }
+  .banner.green { background: var(--green); color: #fff; }
+  .banner.amber { background: var(--amber); color: #fff; }
+
+  /* halves */
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; }
+  .half { position: relative; padding: 8px 32px 6px; overflow: hidden; }
+  .half + .half { border-left: 2px solid var(--ink); }
+  .head { position: relative; display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+          border-bottom: 1px solid var(--rule); padding-bottom: 4px; }
+  .head h2 { margin: 0; font-size: calc(var(--fs) * 1.27); font-weight: 800; }
+  .head h2 { white-space: nowrap; }
+  .meta { color: var(--muted); white-space: nowrap; }
+  .meta b { color: var(--ink); }
+  .sweep { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--red); color: #fff;
+           font-weight: 800; font-size: calc(var(--fs) * 1.18); display: flex; align-items: center; padding-left: 12px;
+           white-space: nowrap; overflow: hidden; pointer-events: none; opacity: 0; }
+  .sweep.go { animation: sweep 600ms ease-out forwards; }
+  @keyframes sweep { 0% { width: 0; opacity: 1; } 70% { width: 100%; opacity: 1; } 100% { width: 100%; opacity: 0; } }
+
+  .hero { padding: 4px 0 6px; }
+  .hero .under { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .hero .n { font-size: clamp(120px, 17vh, 240px); font-weight: 800; line-height: .95; letter-spacing: -3px; }
+  .hero .n.red { color: var(--red); }
+  .hero .n.green { color: var(--green); }
+  .hero .l { font-size: calc(var(--fs) * 1.08); color: var(--muted); }
+  .stop { color: var(--red); font-weight: 800; }
+
+  /* ledger */
+  .ledger { border-top: 2px solid var(--ink); }
+  .row { display: grid; grid-template-columns: 4.7em 4.4em 4.2em 1fr; align-items: center; gap: 10px;
+         min-height: max(46px, 6.4vh); font-size: var(--fs); border-bottom: 1px solid var(--rule); padding: 2px 4px; }
+  .row.clickable { cursor: pointer; }
+  .row.clickable:hover { background: var(--paper); }
+  .row .oid { font-weight: 700; }
+  .row .amt { text-align: right; color: var(--muted); }
+  .row .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .row.dup { background: rgba(215, 38, 30, .08); }
+  .row.dup .status, .row.dup .oid { color: var(--red); }
+  .row.miss .status { color: var(--red); }
+  .muted { color: var(--muted); font-weight: 400; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 0.9em; height: 0.9em; border-radius: 50%; background: var(--ink); }
+  .row.dup .dot { background: var(--red); }
+  .dot.drop { animation: drop 450ms cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes drop { 0% { transform: translateY(-34px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+
+  .pending { color: var(--amber); }
+  .held { color: var(--amber); white-space: normal; line-height: 1.12; display: block; padding: 2px 0; }
+  .denied { color: var(--red); }
+  .stamp { display: inline-flex; align-items: baseline; gap: 10px; border: 3px solid var(--green); color: var(--green);
+           border-radius: 6px; padding: 0 8px; transform: rotate(-3deg); font-weight: 900; letter-spacing: 1px; }
+  .stamp .tx { font-family: var(--mono); font-weight: 600; letter-spacing: 0; font-size: var(--fs); }
+  .stamp.rev { border-color: var(--ink); color: var(--ink); }
+  .stamp.thump { animation: thump 380ms ease-out; }
+  @keyframes thump { 0% { transform: rotate(-3deg) scale(1.9); opacity: 0; } 60% { transform: rotate(-3deg) scale(.94); opacity: 1; }
+                     100% { transform: rotate(-3deg) scale(1); } }
+
+  footer { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 8px 32px;
+           border-top: 1px solid var(--ink); background: var(--paper); color: var(--muted); }
+  footer b { color: var(--ink); }
+
+  /* receipt slip */
+  dialog { border: none; padding: 0; background: transparent; max-width: 94vw; }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  .slip { background: var(--paper); color: var(--ink); width: min(30em, 92vw); padding: 26px 30px 22px;
+          font-family: var(--mono); font-size: var(--fs); border-top: 6px dashed var(--bg); max-height: 90vh; overflow: auto; }
+  .slip h3 { margin: 0 0 4px; font-size: calc(var(--fs) * 1.27); }
+  .slip .sub { color: var(--muted); margin-bottom: 14px; }
+  .slip .line { display: grid; grid-template-columns: 9.5em 1fr; gap: 12px; padding: 7px 0; border-top: 1px dashed var(--rule); }
+  .slip .k { color: var(--muted); }
+  .slip .v { word-break: break-word; }
+  .slip .actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; }
+  .slip button { font: inherit; font-family: var(--sans); font-size: var(--fs); padding: 8px 16px; border-radius: 6px;
+                 border: 2px solid var(--ink); background: var(--paper); cursor: pointer; font-weight: 700; }
+  .slip button.danger { border-color: var(--red); color: var(--red); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot.drop, .stamp.thump { animation: none; }
+    .sweep.go { animation: none; opacity: 1; width: 100%; transition: opacity 600ms; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>Exactly Once</h1>
+      <div class="motto">Nothing counts without a receipt.</div>
+    </div>
+    <div class="controls">
+      <button id="b-start"><kbd>S</kbd><span>Start race</span></button>
+      <button id="b-crash"><kbd>C</kbd>Crash both</button>
+      <button id="b-drift"><kbd>D</kbd>Bank changes its API</button>
+      <button id="b-mem"><kbd>M</kbd><span>Memory on</span></button>
+      <button id="b-revoke"><kbd>R</kbd><span>Revoke permission</span></button>
+      <button id="b-reset"><kbd>X</kbd>Reset</button>
+    </div>
+  </header>
+  <div id="banners"></div>
+  <main>
+    <section class="half" id="h-baseline">
+      <div class="head"><h2>Standard agent</h2><span id="t-baseline"></span><div class="sweep">crashed, restarting</div></div>
+      <div class="hero"><div class="n" id="n-baseline">–</div><div class="under"><span class="l">paid out twice</span><span class="meta" id="m-baseline"></span></div></div>
+      <div class="ledger" id="l-baseline"></div>
+    </section>
+    <section class="half" id="h-once">
+      <div class="head"><h2>With Exactly Once</h2><span id="t-once"></span><div class="sweep">crashed, restarting</div></div>
+      <div class="hero"><div class="n" id="n-once">–</div><div class="under"><span class="l">paid out twice</span><span class="meta" id="m-once"></span></div></div>
+      <div class="ledger" id="l-once"></div>
+    </section>
+  </main>
+  <footer>
+    <span id="f-perm"></span>
+    <span id="f-mem"></span>
+    <span id="f-bank"></span>
+  </footer>
+</div>
+
+<dialog id="slip"><div class="slip" id="slip-body"></div></dialog>
+
+<script>
+const ROWS = 6;                                   // stage default: orders shown per ledger
+const RACE = { orders: 6, crash_prob: 0.2, chaos: "default" };
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const money = (c) => "$" + ((c || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const hhmmss = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour12: false }) : "";
+const who = (email) => (email || "").split("@")[0];
+
+let S = null;
+const prev = { crashes: {}, dots: { baseline: {}, once: {} }, stamp: {} };
+
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { "content-type": "application/json" },
+                                body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function sweep(agent) {
+  const el = document.querySelector(`#h-${agent} .sweep`);
+  el.classList.remove("go"); void el.offsetWidth; el.classList.add("go");
+}
+
+function dots(agent, oid, n) {
+  const was = prev.dots[agent][oid] ?? n;      // first paint: no drop animation
+  prev.dots[agent][oid] = n;
+  let h = "";
+  for (let i = 0; i < Math.min(n, 4); i++) h += `<span class="dot${i >= was ? " drop" : ""}"></span>`;
+  return `<span class="dots">${h}</span>`;
+}
+
+function baselineRow(o, a) {
+  const p = a.per_order[o.order_id] || {};
+  const n = p.refunds || 0;
+  const miss = (a.missing || {})[o.order_id];
+  let cls = "row", status = `<span class="muted">waiting</span>`;
+  if (n > 1) { cls += " dup"; status = n === 2 ? "paid twice" : `paid ${n}×`; }
+  else if (miss) { cls += " miss"; status = `said done, no ${miss.filter((m) => m !== "refund")[0] || "refund"}`; }
+  else if (n === 1) status = `<span class="muted">paid once</span>`;
+  if (n > 1 && miss) status += `, no ${miss[0]}`;
+  return `<div class="${cls}"><span class="oid">${esc(o.order_id)}</span><span class="amt">${money(o.amount_cents)}</span>
+          ${dots("baseline", o.order_id, n)}<span class="status">${status}</span></div>`;
+}
+
+function shortReason(t) {
+  const m = /proposed (\d+)c/.exec(t || "");
+  if (m) return `LLM asked ${money(+m[1])}`;
+  if (/not confirmed/.test(t || "")) return "bank never confirmed";
+  if (/mismatch/.test(t || "")) return "amount mismatch";
+  return (t || "").split(/[:(]/)[0].slice(0, 40);
+}
+
+function onceRow(o, a) {
+  const p = a.per_order[o.order_id] || {};
+  const r = (a.receipts || {})[o.order_id] || {};
+  const n = p.refunds || 0;
+  let status = `<span class="muted">waiting</span>`;
+  const st = r.refund;
+  if (st === "held" || r.restock === "held" || r.email === "held") status = `<span class="held">held for a human: ${esc(shortReason(r.held_reason))}</span>`;
+  else if (st === "denied") status = `<span class="denied">denied: permission revoked</span>`;
+  else if (st === "compensated") status = `<span class="stamp rev">REVERSED <span class="tx">${esc(r.proof || "")}</span></span>`;
+  else if (st === "proven") {
+    const key = o.order_id;
+    const thump = prev.stamp[key] !== undefined && prev.stamp[key] !== "proven" ? " thump" : "";
+    status = `<span class="stamp${thump}">PROVEN <span class="tx">${esc(r.proof || "")}</span></span>`;
+  } else if (st === "intent" || st === "sent") status = `<span class="pending">sent, checking bank</span>`;
+  if (st !== undefined || prev.stamp[o.order_id] === undefined) prev.stamp[o.order_id] = st ?? "none";
+  const click = r.key ? ` clickable" data-key="${esc(r.key)}` : "";
+  return `<div class="row${click}"><span class="oid">${esc(o.order_id)}</span><span class="amt">${money(o.amount_cents)}</span>
+          ${dots("once", o.order_id, n)}<span class="status">${status}</span></div>`;
+}
+
+function render(s) {
+  S = s;
+  const orders = (s.orders || []).slice(0, ROWS);
+  for (const a of ["baseline", "once"]) {
+    const x = s.agents[a];
+    if (prev.crashes[a] !== undefined && x.crashes > prev.crashes[a]) sweep(a);
+    prev.crashes[a] = x.crashes;
+    const hero = $(`#n-${a}`);
+    hero.textContent = money(x.dup_refund_cents);
+    hero.className = "n " + ((x.dup_refund_cents || 0) > 0 ? "red" : "green");
+    const fin = Math.min(x.finished, orders.length || x.finished);
+    $(`#m-${a}`).innerHTML = `crashes <b>${x.crashes}</b> &nbsp;·&nbsp; finished <b>${fin}/${orders.length || "–"}</b>`;
+    $(`#t-${a}`).innerHTML = x.status === "stopped" ? `<span class="stop">stopped</span>` : "";
+    $(`#l-${a}`).innerHTML = orders.length ? orders.map((o) => a === "once" ? onceRow(o, x) : baselineRow(o, x)).join("")
+      : `<div class="row"><span class="muted" style="grid-column:1/-1">Press S to start a race.</span></div>`;
+  }
+
+  const b = [];
+  if (s.grant.revoked) {
+    b.push(`<div class="banner red">Permission revoked by ${esc(who(s.grant.revoked_by))} at ${hhmmss(s.grant.revoked_at)}` +
+           `${s.agents.once.status === "stopped" ? ", agent stopped" : ""}</div>`);
+  }
+  if (s.drift) {
+    const m = s.memory.recalled;
+    b.push(m ? `<div class="banner green">Bank changed its API. Exactly Once learned the fix from ${esc(m.learned_from)} (proven) and remembered it.</div>`
+             : `<div class="banner amber">Bank changed its API.</div>`);
+  }
+  $("#banners").innerHTML = b.join("");
+
+  $("#f-perm").innerHTML = s.grant.revoked ? `Permission: <b style="color:var(--red)">revoked</b> by ${esc(s.grant.revoked_by)}`
+    : `Permission: <b>granted</b> by ${esc(s.grant.issued_by || "?")}`;
+  $("#f-mem").innerHTML = `Memory: <b>${s.memory.count}</b> proven fix${s.memory.count === 1 ? "" : "es"}${s.memory.on ? "" : " (off)"}`;
+  $("#f-bank").innerHTML = `Bank API: <b>v${s.drift ? 2 : 1}</b>`;
+
+  $("#b-start span").textContent = s.race_running ? "Race running…" : "Start race";
+  $("#b-start").disabled = s.race_running;
+  $("#b-mem span").textContent = s.memory.on ? "Memory on" : "Memory off";
+  $("#b-mem").classList.toggle("on", s.memory.on);
+  $("#b-drift").classList.toggle("on", s.drift);
+  $("#b-revoke span").textContent = s.grant.revoked ? "Restore permission" : "Revoke permission";
+}
+
+let inflight = false;
+async function poll() {
+  if (inflight) return;
+  inflight = true;
+  try { render(await api("GET", "/api/state")); } catch (e) { console.warn("state", e.message); }
+  finally { inflight = false; }
+}
+setInterval(poll, 1000); poll();
+
+const act = (fn) => async () => { try { await fn(); } catch (e) { console.warn(e.message); } poll(); };
+const actions = {
+  s: act(() => S && !S.race_running && api("POST", "/api/race", RACE)),
+  c: act(() => api("POST", "/api/crash")),
+  d: act(() => api("POST", "/api/drift", { on: !(S && S.drift) })),
+  m: act(() => api("POST", "/api/memory", { on: !(S && S.memory.on) })),
+  r: act(() => S && S.grant.revoked ? api("POST", "/api/regrant") : api("POST", "/api/revoke")),
+  x: act(() => { prev.dots = { baseline: {}, once: {} }; prev.stamp = {}; return api("POST", "/api/reset"); }),
+};
+$("#b-start").onclick = actions.s; $("#b-crash").onclick = actions.c; $("#b-drift").onclick = actions.d;
+$("#b-mem").onclick = actions.m; $("#b-revoke").onclick = actions.r; $("#b-reset").onclick = actions.x;
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || $("#slip").open) return;
+  const f = actions[e.key.toLowerCase()];
+  if (f) { e.preventDefault(); f(); }
+});
+
+/* receipt slip */
+const line = (k, v) => `<div class="line"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;
+let slipKey = null;
+async function openSlip(key) {
+  slipKey = key;
+  const r = await api("GET", "/api/receipt/" + encodeURIComponent(key));
+  const g = (r.grant || [])[0] || {};
+  const d = r.decision || {};
+  const mem = (r.memories || []).map((m) => `${esc(m._id)}, learned from ${esc((m.source_receipts[0] || "").split(":")[1] || "?")} (proven)`).join("<br>") || "none";
+  const ev = r.evidence || {};
+  const comp = (r.compensations || [])[0];
+  $("#slip-body").innerHTML =
+    `<h3>${esc(r.order_id)} · refund ${money(d.amount_cents)}</h3><div class="sub">${esc(r._id)}</div>` +
+    line("status", `<b class="${r.status === "proven" ? "" : "pending"}" style="${r.status === "proven" ? "color:var(--green)" : ""}">${esc(r.status.toUpperCase())}</b>`) +
+    line("allowed by", `${esc(g._id || r.authority?.grant_id)} · ${esc(g.issued_by || r.authority?.issued_by || "")}`) +
+    line("decision (frozen)", `${money(d.amount_cents)} to ${esc(d.account)}${d.restock !== undefined ? ` · restock ${d.restock ? "yes" : "no"}` : ""}`) +
+    line("attempts", `${r.attempts ?? 0}${r.first_try_failed ? " · first try failed (bank API)" : ""}${r.reconciled ? " · reconciled after crash" : ""}`) +
+    line("proven by", ev.refund_id ? `${esc(ev.refund_id)} · ${hhmmss(r.proven_at)}` : `<span class="pending">${esc(r.held_reason || "not proven yet")}</span>`) +
+    line("memory used", mem) +
+    (comp ? line("reversed by", `${esc(comp._id)} · ${esc(comp.status)}`) : "") +
+    `<div class="actions"><button id="slip-close">Close</button>` +
+    (r.status === "proven" ? `<button class="danger" id="slip-rev">Reverse this refund</button>` : "") + `</div>`;
+  $("#slip-close").onclick = () => $("#slip").close();
+  const rev = $("#slip-rev");
+  if (rev) rev.onclick = async () => {
+    rev.disabled = true; rev.textContent = "Reversing…";
+    try { await api("POST", "/api/reverse/" + encodeURIComponent(slipKey)); await openSlip(slipKey); poll(); }
+    catch (e) { rev.textContent = e.message; }
+  };
+  if (!$("#slip").open) $("#slip").showModal();
+}
+$("#l-once").addEventListener("click", (e) => {
+  const row = e.target.closest(".row[data-key]");
+  if (row) openSlip(row.dataset.key).catch((x) => console.warn(x.message));
+});
+$("#slip").addEventListener("click", (e) => { if (e.target.id === "slip") $("#slip").close(); });
+</script>
+</body>
+</html>

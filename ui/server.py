@@ -57,6 +57,20 @@ def _false_done(claimed: list[str], truth: dict | None, restock: dict) -> int:
     return n
 
 
+def _missing(claimed: list[str], truth: dict | None, restock: dict) -> dict:
+    """Orders the agent claimed done that are missing an effect in the world: {order_id: [effects missing]}."""
+    if not truth:
+        return {}
+    out = {}
+    for o in claimed:
+        p = truth["per_order"].get(o, {})
+        miss = [k for k, need in (("refund", True), ("restock", restock.get(o, True)), ("email", True))
+                if need and p.get(k + "s", 0) == 0]
+        if miss:
+            out[o] = miss
+    return out
+
+
 def _row(e: dict) -> dict:
     ev = e.get("evidence") or {}
     proof = ev.get("reversal_id") or ev.get("refund_id") or ev.get("restock_id") or ev.get("message_id") or ""
@@ -64,6 +78,11 @@ def _row(e: dict) -> dict:
     return {"key": e["_id"], "order_id": e.get("order_id"), "action": action, "status": e["status"],
             "proof": proof, "t": e.get("t"), "memory": bool(e.get("memory_used")),
             "reason": e.get("held_reason")}
+
+
+@app.get("/stage")
+def stage():
+    return FileResponse(STATIC / "stage.html")
 
 
 @app.get("/api/state")
@@ -84,7 +103,29 @@ def state():
                      "dup_refund_cents": truth.get("dup_refund_cents") if truth else None,
                      "false_done": _false_done(claimed, truth, restock),
                      "refunds_total": truth["refunds_total"] if truth else None,
-                     "world_up": truth is not None}
+                     "world_up": truth is not None,
+                     # stage console ledger (additive)
+                     "per_order": truth["per_order"] if truth else {},
+                     "missing": _missing(claimed, truth, restock)}
+    by_order: dict = {}
+    if run_id:
+        for e in d.effects.find({"run_id": run_id, "_id": {"$not": {"$regex": "^comp:"}}},
+                                {"order_id": 1, "status": 1, "evidence": 1, "held_reason": 1, "memory_used": 1}):
+            action = e["_id"].rsplit(":", 1)[-1]
+            row = by_order.setdefault(e["order_id"], {})
+            row[action] = e["status"]
+            if action == "refund":
+                row["proof"] = (e.get("evidence") or {}).get("refund_id")
+                row["key"] = e["_id"]
+                row["memory"] = bool(e.get("memory_used"))
+            if e["status"] == "held":
+                row["held_reason"] = e.get("held_reason")
+    agents["once"]["receipts"] = by_order
+    try:
+        agents_orders = [{"order_id": o["order_id"], "customer": o["customer"], "amount_cents": o["amount_cents"]}
+                         for o in _http.get(f"{(procs.get('once') or {}).get('world_url') or WORLDS['once']}/orders").json()]
+    except Exception:
+        agents_orders = []
     counts = {c["_id"]: c["n"] for c in d.effects.aggregate([
         {"$match": {"run_id": run_id}}, {"$group": {"_id": "$status", "n": {"$sum": 1}}}])} if run_id else {}
     feed = [_row(e) for e in d.effects.aggregate([
@@ -116,6 +157,7 @@ def state():
         "memory": {"on": flag.get("on", True), "count": d.memories.count_documents({"status": "active"}),
                    "recalled": rec_banner},
         "drift": drift,
+        "orders": agents_orders,
         "race_running": bool(proc and proc.poll() is None),
         "results": list(d.results.find({}, {"_id": 0}).sort("created_at", -1).limit(2)),
     })
