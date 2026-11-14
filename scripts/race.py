@@ -16,7 +16,7 @@ import httpx
 
 from once.config import admin_db
 from once.grants import now
-from scripts.seed_grant import reset_demo, reset_grant
+from scripts.seed_grant import budget_for, reset_demo, reset_grant
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CHAOS = [("bank", "timeout_after_commit", 0.15), ("inventory", "fake_ok", 0.15)]
@@ -133,13 +133,14 @@ def run_race(orders: int = 20, crash_prob: float = 0.15, agents=("baseline", "on
     d = admin_db()
     for a in agents:
         prepare_world(urls[a], orders, chaos, drift)
+    budget = budget_for([urls[a] for a in agents], orders)
     if grant_id == "g_ops_demo":
-        reset_demo()
+        reset_demo(budget_cents=budget)
     else:
-        reset_grant(grant_id)
+        reset_grant(grant_id, budget_cents=budget)
     run_id = run_id or f"r{int(time.time())}"
     print(f"[race] {run_id}: {orders} orders, crash_prob {crash_prob}, chaos {chaos}"
-          f"{', drift on' if drift else ''}, agents {','.join(agents)}", flush=True)
+          f"{', drift on' if drift else ''}, agents {','.join(agents)}, budget {budget}c", flush=True)
     for a in agents:
         d.processes.replace_one({"_id": tag + a}, {"_id": tag + a, "agent": a, "run_id": run_id, "crashes": 0,
                                                     "status": "starting", "pid": None, "world_url": urls[a],

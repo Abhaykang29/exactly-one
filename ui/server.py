@@ -20,6 +20,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 GRANT = "g_ops_demo"
 BY = "ops-manager@maple.test"
 AGENTS = ("baseline", "once")
+RESET_ORDERS = 20
 WORLDS = {"baseline": os.environ.get("WORLD_BASELINE_URL", "http://localhost:8001"),
           "once": os.environ.get("WORLD_ONCE_URL", "http://localhost:8002")}
 
@@ -139,11 +140,20 @@ def api_revoke():
     return ok({"revoked_at": t, "by": BY})
 
 
+def _demo_budget() -> int:
+    from scripts.seed_grant import DEFAULT_BUDGET, budget_for
+    try:
+        return budget_for(list(WORLDS.values()), RESET_ORDERS)
+    except Exception:
+        return 2 * DEFAULT_BUDGET            # worlds offline: still generous (20 orders max ~200k)
+
+
 @app.post("/api/regrant")
 def api_regrant():
     from scripts.seed_grant import reset_demo
-    reset_demo()
-    return {"ok": True}
+    b = _demo_budget()
+    reset_demo(budget_cents=b)
+    return {"ok": True, "budget_cents": b}
 
 
 class On(BaseModel):
@@ -218,12 +228,12 @@ def api_race(p: RaceParams):
 @app.post("/api/reset")
 def api_reset():
     from scripts.seed_grant import reset_demo
-    reset_demo()
     for url in WORLDS.values():
         try:
-            _http.post(f"{url}/reset", json={"orders": 20, "seed": 7}, timeout=10)
+            _http.post(f"{url}/reset", json={"orders": RESET_ORDERS, "seed": 7}, timeout=10)
         except Exception:
             pass
+    reset_demo(budget_cents=_demo_budget())
     admin_db().processes.delete_many({"_id": {"$in": list(AGENTS)}})
     return {"ok": True}
 
