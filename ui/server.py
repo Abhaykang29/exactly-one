@@ -81,6 +81,7 @@ def state():
         agents[a] = {"status": p.get("status", "idle"), "crashes": p.get("crashes", 0), "pid": p.get("pid"),
                      "finished": len(claimed), "held": len(p.get("held", [])),
                      "dup_refunds": truth["dup_refunds"] if truth else None,
+                     "dup_refund_cents": truth.get("dup_refund_cents") if truth else None,
                      "false_done": _false_done(claimed, truth, restock),
                      "refunds_total": truth["refunds_total"] if truth else None,
                      "world_up": truth is not None}

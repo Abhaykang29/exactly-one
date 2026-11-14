@@ -93,7 +93,8 @@ def compute(agent: str, run_id: str, url: str, orders: int, crashes: int, tag: s
 
     res = {
         "run_id": run_id, "agent": agent, "tag": tag, "orders": orders, "crashes": crashes,
-        "dup_refunds": truth["dup_refunds"], "dup_restocks": truth["dup_restocks"],
+        "dup_refunds": truth["dup_refunds"], "dup_refund_cents": truth.get("dup_refund_cents"),
+        "refunded": truth["orders_refunded"], "dup_restocks": truth["dup_restocks"],
         "dup_emails": truth["dup_emails"],
         "missed": sum(1 for o in reached if per[o]["refunds"] == 0 and o not in held),
         "false_done": sum(1 for o in claimed if missing_any(o)),
@@ -106,6 +107,7 @@ def compute(agent: str, run_id: str, url: str, orders: int, crashes: int, tag: s
 
 
 ROWS = [("crashes injected", "crashes"), ("refunds paid twice", "dup_refunds"),
+        ("$ paid twice", "dup_refund_cents"), ("orders refunded", "refunded"),
         ("restocks done twice", "dup_restocks"), ("emails sent twice", "dup_emails"),
         ("said done, wasn't", "false_done"), ("missed refunds", "missed"),
         ("orders finished", "claimed_done"), ("held for a human", "held"),
@@ -118,7 +120,9 @@ def table(results: dict) -> str:
     for label, k in ROWS:
         def fmt(r):
             v = r.get(k)
-            return "-" if v is None else str(v)
+            if v is None:
+                return "-"
+            return f"${v / 100:,.2f}" if k == "dup_refund_cents" else str(v)
         lines.append(f"{label:24}{fmt(b):>10}{fmt(o):>15}")
     return "\n".join(lines)
 
