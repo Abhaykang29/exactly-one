@@ -74,6 +74,15 @@ def ensure_vector_index(d: Database, wait: bool = True) -> str:
         d.memories.create_search_index(SearchIndexModel(definition=vector_def(dims), name="memory_vec",
                                                         type="vectorSearch"))
         print("  created memory_vec, waiting until queryable ...")
+    else:
+        have = next((f.get("numDimensions") for f in
+                     (names["memory_vec"].get("latestDefinition") or {}).get("fields", []) if f.get("type") == "vector"),
+                    None)
+        print(f"  memory_vec exists with numDimensions={have}")
+        if have != dims:
+            d.memories.update_search_index("memory_vec", vector_def(dims))
+            print(f"  updated memory_vec numDimensions {have} -> {dims}, waiting until queryable ...")
+            time.sleep(5)
     deadline = time.time() + 300
     while wait:
         idx = next((i for i in d.memories.list_search_indexes() if i["name"] == "memory_vec"), None)
