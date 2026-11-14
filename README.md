@@ -56,16 +56,33 @@ Other scripts: `python -m scripts.demo_revoke` (M4), `python -m scripts.demo_dri
 
 ## Results
 
-_Filled in from the `results` collection after the measured runs._
+**Chaos run** (`scripts.chaos_run`, 10 races x 10 orders = 100 orders per agent, crash probability 0.2 at every
+crash point, default chaos: bank `timeout_after_commit` 15%, inventory `fake_ok` 15%, **stub decider**), measured
+on the event's Atlas cluster against separate worlds and grant `g_chaos`:
 
-|                      | standard | exactly-once |
-|----------------------|---------:|-------------:|
-| crashes injected     |          |              |
-| refunds paid twice   |          |              |
-| said done, wasn't    |          |              |
-| missed refunds       |          |              |
+|                        | standard | exactly-once |
+|------------------------|---------:|-------------:|
+| crashes injected       |       88 |          144 |
+| refunds paid twice     |      116 |            0 |
+| restocks done twice    |       42 |            0 |
+| emails sent twice      |       31 |            0 |
+| said done, wasn't      |        7 |            0 |
+| missed refunds         |        0 |            0 |
+| orders finished        |      100 |          100 |
 
-The big chaos run uses the stub decider for speed; the live demo uses the real model.
+Exactly Once has more crash points per order (two per action, three actions), so it was crashed more often.
+The big run used the stub decider for speed. The live demo uses the real model.
+
+**Single races, 10 orders, crash probability 0.2** (ground truth from the fake bank):
+
+| decider | agent | refunds paid twice | $ paid twice | orders refunded | missed | held | said done, wasn't |
+|---|---|---:|---:|---:|---:|---:|---:|
+| stub | standard | 7 | $201.93 | 10/10 | 0 | 0 | 0 |
+| stub | exactly-once | 0 | $0.00 | 10/10 | 0 | 0 | 0 |
+| LLM (muse-spark-1.3) | standard | 15 | $958.85 | 10/10 | 0 | 0 | 0 |
+| LLM (muse-spark-1.3) | exactly-once | 0 | $0.00 | 10/10 | 0 | 0 | 0 |
+
+LLM race timing (`muse-wonder-1.0`, about 8s per decision): 10 orders 278s, 6 orders 102s.
 
 ## Built during the event
 
