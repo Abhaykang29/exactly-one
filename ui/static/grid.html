@@ -16,7 +16,7 @@
   .app { display: flex; flex-direction: column; height: 100vh; }
   header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 10px 28px;
            border-bottom: 2px solid var(--ink); }
-  h1 { margin: 0; font-size: calc(var(--fs) * 1.45); font-weight: 800; letter-spacing: -.3px; }
+  h1 { margin: 0; font-size: calc(var(--fs) * 1.2); white-space: nowrap; font-weight: 800; letter-spacing: -.3px; }
   .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .controls button { font: inherit; font-size: var(--fs); color: var(--muted); background: #fff; border: 1px solid var(--rule);
                      border-radius: 6px; padding: 3px 10px 3px 6px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
@@ -32,13 +32,14 @@
   .block h2 { margin: 0; font-size: calc(var(--fs) * 1.25); font-weight: 800; }
   .danger { color: var(--muted); }
   .nums { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: end; margin-top: 4px; }
+  .lab { min-height: 2.3em; display: flex; align-items: flex-end; }
   .cell { min-width: 0; border-top: 1px solid var(--rule); padding-top: 4px; }
   .lab { line-height: 1.12; font-weight: 600; }
-  .lab .sub { display: block; color: var(--muted); font-weight: 400; }
+  .sub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .num { font-size: clamp(48px, 9.5vh, 120px); font-weight: 800; line-height: 1; letter-spacing: -1.5px;
          white-space: nowrap; overflow: hidden; }
   .red { color: var(--red); } .green { color: var(--green); } .amber { color: var(--amber); } .idle { color: var(--rule); }
-  footer { display: flex; justify-content: space-between; gap: 20px; padding: 6px 28px; border-top: 2px solid var(--ink);
+  footer { display: flex; justify-content: space-between; gap: 20px; padding: 6px 28px; white-space: nowrap; border-top: 2px solid var(--ink);
            color: var(--muted); }
   footer b { color: var(--ink); }
   dialog { border: 2px solid var(--ink); border-radius: 10px; padding: 20px 26px; width: min(1100px, 94vw); max-height: 88vh; }
@@ -76,9 +77,9 @@ const ORDER = ["refunds", "rebalancing", "offboarding", "alerts"];
 const STYLES = [["naive", "Naive LangGraph"], ["textbook", "Best-practice LangGraph"], ["once", "Exactly Once"]];
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-function money(c) {
+function money(c) {                   // whole dollars so the numbers stay big; $11.3k above $10,000
   const d = (c || 0) / 100;
-  return d >= 1000 ? "$" + Math.round(d).toLocaleString("en-US") : "$" + d.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return d >= 10000 ? "$" + (d / 1000).toFixed(1) + "k" : "$" + Math.round(d).toLocaleString("en-US");
 }
 let B = null;
 
@@ -89,10 +90,13 @@ async function api(method, path, body) {
   return j;
 }
 
-function fit(el) {                    // shrink a big number until it fits its column
-  el.style.fontSize = "";
-  let size = parseFloat(getComputedStyle(el).fontSize);
-  while (el.scrollWidth > el.clientWidth && size > 36) { size -= 4; el.style.fontSize = size + "px"; }
+function fitRow(row) {                 // one size per block: shrink all three numbers until the widest fits
+  const nums = [...row.querySelectorAll(".num")];
+  nums.forEach((n) => (n.style.fontSize = ""));
+  let size = parseFloat(getComputedStyle(nums[0]).fontSize);
+  while (nums.some((n) => n.scrollWidth > n.clientWidth) && size > 36) {
+    size -= 4; nums.forEach((n) => (n.style.fontSize = size + "px"));
+  }
 }
 
 function render(b) {
@@ -105,20 +109,20 @@ function render(b) {
       const v = x.value || 0;
       const cls = !started ? "idle" : v > 0 ? (idx === 1 ? "amber" : "red") : "green";
       const shown = blk.metric === "money" ? money(v) : String(v);
-      let sub = blk.metric_label;
-      if (blk.metric === "alerts") sub = `${x.twice} sent twice · ${x.never_arrived} never arrived`;
-      return `<div class="cell"><div class="num ${cls}">${shown}</div>
-              <div class="lab">${label}<span class="sub">${esc(sub)} · ${x.crashes} crash${x.crashes === 1 ? "" : "es"}</span></div></div>`;
+      const cr = `${x.crashes ?? 0} crash${x.crashes === 1 ? "" : "es"}`;
+      const sub = blk.metric === "alerts" ? `${x.twice ?? 0} twice · ${x.never_arrived ?? 0} never` : cr;
+      return `<div class="cell"><div class="lab">${label}</div><div class="num ${cls}">${shown}</div>
+              <div class="sub">${esc(sub)}</div></div>`;
     }).join("");
-    return `<section class="block" data-uc="${uc}"><h2>${esc(blk.title)}</h2><div class="danger">${esc(blk.danger)}</div>
+    return `<section class="block" data-uc="${uc}"><h2>${esc(blk.title)} <span class="danger" style="font-size:var(--fs);font-weight:400">· ${esc(blk.metric_label)}</span></h2><div class="danger">${esc(blk.danger)}</div>
             <div class="nums">${cells}</div></section>`;
   }).join("");
-  document.querySelectorAll(".num").forEach(fit);
+  document.querySelectorAll(".nums").forEach(fitRow);
   const running = b.race_running || b.status === "running";
   $("#b-start").disabled = running;
   $("#b-start span").textContent = running ? "Running…" : "Start all";
   $("#b-reset").disabled = running;
-  $("#status").innerHTML = b.run_id ? `run <b>${esc(b.run_id)}</b> · ${b.items} items each · <b>${running ? "running" : esc(b.status)}</b>` : "ready";
+  $("#status").innerHTML = b.run_id ? `<b>${running ? "running" : esc(b.status)}</b> · ${b.items} each` : "ready";
 }
 
 let inflight = false;
