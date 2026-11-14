@@ -603,3 +603,4 @@ to the terminal table from `race.py --headless`) → drift and memory → grants
 - langgraph 1.2.22 supports `invoke(..., durability="sync")`; `MongoDBSaver(client, db_name=LG_DB)` per the installed 0.5.1 signature.
 - Receipt card uses plain `$lookup` + `$project` (no `$lookup` sub-pipeline) for portability.
 - Atlas Model API embedding response is read as `data[].embedding` (verify against the live API in M0).
+- A memory's `fix` carries `schema_version` (from `GET /bank/schema` when the candidate was made); `adapt_bank` applies a recalled fix only if the bank currently reports that version, otherwise it attempts normally.

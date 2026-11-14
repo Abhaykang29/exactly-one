@@ -54,10 +54,13 @@ def recall(problem_text: str, system: str, tenant: str) -> dict | None:
     return None
 
 
-def save_candidate(field_map: dict, problem_text: str, scope: dict, key: str) -> str:
+def save_candidate(field_map: dict, problem_text: str, scope: dict, key: str,
+                   schema_version: int | None = None) -> str:
+    """schema_version: the version of the target system's schema this fix maps to (checked before reuse)."""
     cid = "cand_" + uuid.uuid4().hex[:10]
     db().candidates.insert_one({
-        "_id": cid, "scope": scope, "problem_text": problem_text, "fix": {"field_map": field_map},
+        "_id": cid, "scope": scope, "problem_text": problem_text,
+        "fix": {"field_map": field_map, "schema_version": schema_version},
         "from_receipt": key, "status": "candidate", "created_at": now(),
     })
     print(f"[memory] new candidate {cid} (not a memory until proven)", flush=True)

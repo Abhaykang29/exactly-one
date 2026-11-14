@@ -39,8 +39,8 @@ def _llm_map(old: list[str], new: list[str]) -> dict | None:
         return None
 
 
-def derive_field_map(world: World) -> dict:
-    new = world.bank_schema()["required"]
+def derive_field_map(world: World, schema: dict | None = None) -> dict:
+    new = (schema or world.bank_schema())["required"]
     fm = _llm_map(V1_REFUND_FIELDS, new)
     if fm is None:
         fm = dict(zip(V1_REFUND_FIELDS, new))
@@ -50,21 +50,32 @@ def derive_field_map(world: World) -> dict:
 def make_adapt_bank(world: World):
     def adapt_bank(err: SchemaError | None, key: str) -> AdaptResult | None:
         text = problem_text(err)
-        # 1. memory first: only a proven memory may shape the request (also before the first try)
+        schema: dict | None = None
+        # 1. memory first: only a proven memory may shape the request (also before the first try),
+        #    and only if the bank still speaks the schema version the fix was proven against
         m = memory.recall(text, "bank", tenant())
         if m:
             r = db().effects.find_one({"_id": key}, {"memory_failed": 1}) or {}
-            if m["_id"] not in (r.get("memory_failed") or []):
+            schema = world.bank_schema()
+            learned_on = m["fix"].get("schema_version")
+            if m["_id"] in (r.get("memory_failed") or []):
+                pass
+            elif learned_on != schema.get("version"):
+                print(f"[memory] skipped {m['_id']}: learned on bank schema v{learned_on}, "
+                      f"bank is now v{schema.get('version')}", flush=True)
+            else:
                 print(f"[memory] recalled {m['_id']} (learned from {m['source_receipts'][0]})", flush=True)
                 return AdaptResult(m["fix"]["field_map"], memory_id=m["_id"])
         if err is None:
-            return None
+            return None                                    # no usable memory: attempt normally
         # 2. read the schema and derive old -> new names; it is only a candidate until proven
-        fm = derive_field_map(world)
+        schema = world.bank_schema()                       # re-read: the 422 is newer than any cached schema
+        fm = derive_field_map(world, schema)
         cid = None
         if fm:
-            cid = memory.save_candidate(fm, text, {"system": "bank", "tenant": tenant()}, key)
-        print(f"[adapt] bank schema changed; field map {fm or 'identity'}", flush=True)
+            cid = memory.save_candidate(fm, text, {"system": "bank", "tenant": tenant()}, key,
+                                        schema_version=schema.get("version"))
+        print(f"[adapt] bank schema v{schema.get('version')}; field map {fm or 'identity'}", flush=True)
         return AdaptResult(fm, candidate_id=cid)
 
     return adapt_bank

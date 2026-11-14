@@ -291,3 +291,25 @@ def test_agent_user_cannot_write_grants():
         assert grants.find_one({"_id": "g_agent_forged"}) is None
     finally:
         c.close()
+
+
+def test_memory_applied_only_on_matching_schema_version(monkeypatch):
+    """Demo risk A: a remembered bank fix is used only if GET /bank/schema still reports the version it was learned on."""
+    from agent import adapt as adapt_mod
+
+    mem = {"_id": "mem_v2", "fix": {"field_map": {"order_id": "order_ref"}, "schema_version": 2},
+           "source_receipts": ["r1:ORD-001:refund"]}
+    monkeypatch.setattr(adapt_mod.memory, "recall", lambda *a, **k: mem)
+
+    class W:
+        version = 1
+        def bank_schema(self):
+            return {"version": self.version, "required": ["order_id", "amount_cents", "account", "reference"]
+                    if self.version == 1 else ["order_ref", "refund_amount_cents", "account", "reference"]}
+
+    w = W()
+    adapt = adapt_mod.make_adapt_bank(w)
+    assert adapt(None, "k:ORD-1:refund") is None                      # bank on v1: attempt normally
+    w.version = 2
+    r = adapt(None, "k:ORD-1:refund")
+    assert r is not None and r.memory_id == "mem_v2" and r.field_map == {"order_id": "order_ref"}
