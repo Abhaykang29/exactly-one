@@ -91,6 +91,8 @@ LLM race timing (`muse-wonder-1.0`, about 8s per decision): 10 orders 278s, 6 or
 - 12:19 Agent user proven read-only on grants (test). Memory fixes gated on bank schema_version. Grant budget >= 2x race order value.
 - 12:19 M3 on Atlas, stub decider, 10 orders, crash 0.2: standard 14 refunds paid twice, exactly-once 0
 - 12:19 Real LLM on (Meta muse-wonder-1.0, OpenAI-compatible, structured output): race 10 orders / crash 0.2 took 278s, standard 21 paid twice vs exactly-once 0; muse-spark-1.3 took 275s (15 vs 0). Traces in LangSmith project exactly-once
+- 12:48 Reliability: LLM decider has a 30s timeout + 1 retry, then a rule-based fallback; an LLM refund above the order amount becomes a held receipt. "$ paid twice" on the race table and console.
+- 12:48 Console demo flow (reset -> race, 20 orders, real LLM, Crash both x2) run 3 times back to back: no failures; exactly-once 0 double refunds and 20/20 finished every time (standard: $53.97, $121.97, $34.98 paid twice). In run 3 the bank API change was switched on mid-race: exactly-once learned the fix once, proved it, and reused the memory for 17 orders
 
 ## Disclosure
 
