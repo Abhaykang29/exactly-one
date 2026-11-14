@@ -263,3 +263,31 @@ def test_only_proven_becomes_memory(monkeypatch):
     assert db().candidates.find_one({"_id": box["cid"]})["status"] == "promoted"
     m = db().memories.find_one({"source_receipts": s.key})
     assert m and m["status"] == "active"
+
+
+# ---------------- the agent can't edit its own rules (custom role agent_role)
+
+@pytest.mark.skipif(not os.environ.get("MONGODB_URI_AGENT"), reason="MONGODB_URI_AGENT not set")
+def test_agent_user_cannot_write_grants():
+    """agent_user may READ once.grants but every write must fail as Unauthorized (code 13)."""
+    from pymongo import MongoClient
+    from pymongo.errors import OperationFailure
+
+    c = MongoClient(os.environ["MONGODB_URI_AGENT"], serverSelectionTimeoutMS=10000)
+    try:
+        grants = c[os.environ.get("ONCE_REAL_DB", "once")].grants
+        assert grants.find_one({"_id": "g_ops_demo"}) is not None          # read is allowed
+        attempts = {
+            "insert": lambda: grants.insert_one({"_id": "g_agent_forged", "tools": ["bank.refund"],
+                                                 "budget_cents": 10**9}),
+            "update": lambda: grants.update_one({"_id": "__no_such_grant__"},
+                                                {"$set": {"budget_cents": 10**9}}),
+            "delete": lambda: grants.delete_one({"_id": "__no_such_grant__"}),
+        }
+        for name, attempt in attempts.items():
+            with pytest.raises(OperationFailure) as e:
+                attempt()
+            assert e.value.code == 13, f"{name}: expected Unauthorized, got {e.value.code} {e.value}"
+        assert grants.find_one({"_id": "g_agent_forged"}) is None
+    finally:
+        c.close()
