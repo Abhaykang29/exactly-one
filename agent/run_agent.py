@@ -21,7 +21,7 @@ from once.grants import now, start_kill_watcher  # noqa: E402
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--agent", choices=["baseline", "once"], required=True)
+    p.add_argument("--agent", choices=["baseline", "textbook", "once"], required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--world-url", required=True)
     p.add_argument("--orders", type=int, default=20)
@@ -37,12 +37,15 @@ def main() -> int:
     world = World(a.world_url)
     saver = MongoDBSaver(agent_client(), db_name=lg_db_name())
     thread = f"{a.run_id}:{a.agent}"
-    config = {"configurable": {"thread_id": thread}, "recursion_limit": 2 * a.orders + 10}
+    config = {"configurable": {"thread_id": thread}, "recursion_limit": 6 * a.orders + 10}
 
     if a.agent == "once":
         from agent.graph_once import make_graph
         start_kill_watcher(a.grant_id)
         graph = make_graph(world, a.run_id, a.orders, proc_id, saver, a.grant_id)
+    elif a.agent == "textbook":
+        from agent.graph_textbook import make_graph as make_textbook
+        graph = make_textbook(world, a.run_id, a.orders, proc_id, saver)
     else:
         from agent.graph_baseline import make_graph
         graph = make_graph(world, a.run_id, a.orders, proc_id, saver)

@@ -114,24 +114,28 @@ ROWS = [("crashes injected", "crashes"), ("refunds paid twice", "dup_refunds"),
         ("first-try schema fails", "first_try_fails")]
 
 
+COLS = [("baseline", "standard"), ("textbook", "textbook"), ("once", "exactly-once")]
+
+
 def table(results: dict) -> str:
-    b, o = results.get("baseline", {}), results.get("once", {})
-    lines = [f"{'':24}{'standard':>10}{'exactly-once':>15}"]
+    cols = [(a, h) for a, h in COLS if a in results]
+    lines = [f"{'':24}" + "".join(f"{h:>15}" for _, h in cols)]
     for label, k in ROWS:
         def fmt(r):
             v = r.get(k)
             if v is None:
                 return "-"
             return f"${v / 100:,.2f}" if k == "dup_refund_cents" else str(v)
-        lines.append(f"{label:24}{fmt(b):>10}{fmt(o):>15}")
+        lines.append(f"{label:24}" + "".join(f"{fmt(results[a]):>15}" for a, _ in cols))
     return "\n".join(lines)
 
 
-def run_race(orders: int = 20, crash_prob: float = 0.15, agents=("baseline", "once"), chaos: str = "default",
+def run_race(orders: int = 20, crash_prob: float = 0.15, agents=("baseline", "textbook", "once"), chaos: str = "default",
              baseline_url: str | None = None, once_url: str | None = None, grant_id: str | None = None,
              decider: str | None = None, drift: bool = False, tag: str = "", quiet: bool = False,
-             run_id: str | None = None) -> dict:
+             run_id: str | None = None, textbook_url: str | None = None) -> dict:
     urls = {"baseline": baseline_url or os.environ.get("WORLD_BASELINE_URL", "http://localhost:8001"),
+            "textbook": textbook_url or os.environ.get("WORLD_TEXTBOOK_URL", "http://localhost:8003"),
             "once": once_url or os.environ.get("WORLD_ONCE_URL", "http://localhost:8002")}
     grant_id = grant_id or os.environ.get("GRANT_ID", "g_ops_demo")
     d = admin_db()
@@ -172,18 +176,19 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--orders", type=int, default=20)
     p.add_argument("--crash-prob", type=float, default=0.15)
-    p.add_argument("--agents", default="baseline,once")
+    p.add_argument("--agents", default="baseline,textbook,once")
     p.add_argument("--chaos", choices=["default", "none"], default="default")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--baseline-url", default=None)
     p.add_argument("--once-url", default=None)
+    p.add_argument("--textbook-url", default=None)
     p.add_argument("--grant-id", default=None)
     p.add_argument("--decider", choices=["llm", "stub"], default=None)
     p.add_argument("--drift", action="store_true", help="turn on bank schema_v2 after reset")
     p.add_argument("--tag", default="")
     a = p.parse_args()
     res = run_race(a.orders, a.crash_prob, tuple(a.agents.split(",")), a.chaos, a.baseline_url, a.once_url,
-                   a.grant_id, a.decider, a.drift, a.tag)
+                   a.grant_id, a.decider, a.drift, a.tag, textbook_url=a.textbook_url)
     print("\n" + table(res), flush=True)
 
 

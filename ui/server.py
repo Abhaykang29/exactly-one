@@ -19,9 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
 GRANT = "g_ops_demo"
 BY = "ops-manager@maple.test"
-AGENTS = ("baseline", "once")
+AGENTS = ("baseline", "textbook", "once")
 RESET_ORDERS = 20
 WORLDS = {"baseline": os.environ.get("WORLD_BASELINE_URL", "http://localhost:8001"),
+          "textbook": os.environ.get("WORLD_TEXTBOOK_URL", "http://localhost:8003"),
           "once": os.environ.get("WORLD_ONCE_URL", "http://localhost:8002")}
 
 app = FastAPI(title="Exactly Once console")
