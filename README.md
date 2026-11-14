@@ -94,6 +94,8 @@ LLM race timing (`muse-wonder-1.0`, about 8s per decision): 10 orders 278s, 6 or
 - 12:48 Reliability: LLM decider has a 30s timeout + 1 retry, then a rule-based fallback; an LLM refund above the order amount becomes a held receipt. "$ paid twice" on the race table and console.
 - 12:48 Console demo flow (reset -> race, 20 orders, real LLM, Crash both x2) run 3 times back to back: no failures; exactly-once 0 double refunds and 20/20 finished every time (standard: $53.97, $121.97, $34.98 paid twice). In run 3 the bank API change was switched on mid-race: exactly-once learned the fix once, proved it, and reused the memory for 17 orders
 - 14:26 Phase 1: third agent 'textbook' (best-practice LangGraph, one node per side effect). 6 orders, real LLM, crash 0.2: standard 8 refunds paid twice ($238.92), textbook 0 refunds twice / 1 email twice (2 crashes), exactly-once 0 of anything
+- 14:30 Phase 2 live on /grid (6 items each, crash 0.2, Crash everything pressed once): naive / best-practice / exactly-once.
+  Refunds paid twice $234.94 / $17.99 / $0. Rebalancing traded twice $31,232.40 / $2,579.20 / $0. Offboarding said removed, wasn't 2 / 2 / 0. Alerts sent twice + never arrived 5 / 1 / 0. Exactly-once: 30/30 receipts proven
 
 ## Disclosure
 
