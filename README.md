@@ -70,6 +70,7 @@ The big chaos run uses the stub decider for speed; the live demo uses the real m
 ## Built during the event
 
 - 10:56 M0–M6 code written: once/ layer, agents, mock world, race/chaos/demo scripts, tests, console. Smoke-tested in-process; Atlas run pending `.env`
+- 12:02 M0+M2 verified on Atlas: setup_db checklist green, memory_vec READY (1024 dims), pytest 11 passed
 
 ## Disclosure
 
