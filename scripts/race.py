@@ -138,7 +138,8 @@ def run_race(orders: int = 20, crash_prob: float = 0.15, agents=("baseline", "on
         reset_demo(budget_cents=budget)
     else:
         reset_grant(grant_id, budget_cents=budget)
-    run_id = run_id or f"r{int(time.time())}"
+    # chaos races get their own prefix so they can never share receipt keys with a demo race
+    run_id = run_id or (f"c{int(time.time() * 1000)}" if tag else f"r{int(time.time())}")
     print(f"[race] {run_id}: {orders} orders, crash_prob {crash_prob}, chaos {chaos}"
           f"{', drift on' if drift else ''}, agents {','.join(agents)}, budget {budget}c", flush=True)
     for a in agents:
