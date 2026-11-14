@@ -1,0 +1,13 @@
+pymongo
+fastapi
+uvicorn
+httpx
+pydantic
+python-dotenv
+langgraph
+langgraph-checkpoint-mongodb
+langchain
+langchain-anthropic
+langchain-openai
+langsmith
+pytest
