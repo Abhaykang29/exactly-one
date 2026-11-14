@@ -20,24 +20,28 @@ def main() -> None:
     p.add_argument("--decider", choices=["llm", "stub"], default="stub")
     p.add_argument("--baseline-url", default="http://localhost:8011")
     p.add_argument("--once-url", default="http://localhost:8012")
+    p.add_argument("--textbook-url", default="http://localhost:8013")
+    p.add_argument("--agents", default="baseline,textbook,once")
     p.add_argument("--grant-id", default="g_chaos")
     p.add_argument("--verbose", action="store_true")
     a = p.parse_args()
-    if a.grant_id == "g_ops_demo" or a.baseline_url.endswith(":8001") or a.once_url.endswith(":8002"):
+    if a.grant_id == "g_ops_demo" or any(u.endswith(p) for u, p in ((a.baseline_url, ":8001"), (a.once_url, ":8002"),
+                                                                     (a.textbook_url, ":8003"))):
         raise SystemExit("chaos_run must not share worlds or grants with the live demo")
-    total = {ag: {k: 0 for k in SUM_KEYS} for ag in ("baseline", "once")}
+    agents = tuple(a.agents.split(","))
+    total = {ag: {k: 0 for k in SUM_KEYS} for ag in agents}
     for i in range(1, a.runs + 1):
-        res = run_race(a.orders, a.crash_prob, ("baseline", "once"), "default", a.baseline_url, a.once_url,
-                       a.grant_id, a.decider, tag="chaos:", quiet=not a.verbose)
+        res = run_race(a.orders, a.crash_prob, agents, "default", a.baseline_url, a.once_url,
+                       a.grant_id, a.decider, tag="chaos:", quiet=not a.verbose, textbook_url=a.textbook_url)
         for ag, r in res.items():
             for k in SUM_KEYS:
                 total[ag][k] += r.get(k) or 0
-        b, o = res["baseline"], res["once"]
-        print(f"[chaos] run {i}/{a.runs}: standard dup={b['dup_refunds']} false_done={b['false_done']} "
-              f"crashes={b['crashes']} | exactly-once dup={o['dup_refunds']} false_done={o['false_done']} "
-              f"crashes={o['crashes']}", flush=True)
-    total["once"]["first_try_fails"] = total["once"]["first_try_fails"]
-    total["baseline"]["first_try_fails"] = None
+        print(f"[chaos] run {i}/{a.runs}: " + " | ".join(
+            f"{ag} dup={r['dup_refunds']} false_done={r['false_done']} crashes={r['crashes']}"
+            for ag, r in res.items()), flush=True)
+    for ag in agents:
+        if ag != "once":
+            total[ag]["first_try_fails"] = None
     print(f"\n{a.runs} runs x {a.orders} orders, crash_prob {a.crash_prob}, decider {a.decider}\n")
     print(table(total), flush=True)
 
