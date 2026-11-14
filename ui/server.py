@@ -317,6 +317,13 @@ class AllParams(BaseModel):
 def api_race_all(p: AllParams):
     if (_race_all["proc"] and _race_all["proc"].poll() is None) or (_race["proc"] and _race["proc"].poll() is None):
         return JSONResponse({"error": "a race is already running"}, status_code=409)
+    # clear the last run's agent records now, so the board never scores old "done" lists against reset worlds
+    from scripts.race_all import STYLES, proc_id
+    from agent.usecases import USECASES
+    d = admin_db()
+    d.processes.delete_many({"_id": {"$in": [proc_id(u, s) for u in USECASES for s in STYLES]}})
+    d.processes.replace_one({"_id": "race_all"}, {"_id": "race_all", "run_id": None, "items": p.items,
+                                                  "status": "running", "started_at": _now()}, upsert=True)
     log = open(ROOT / "race.log", "w")
     _race_all["proc"] = subprocess.Popen(
         [sys.executable, "-m", "scripts.race_all", "--headless", "--verbose", "--items", str(p.items),
@@ -345,3 +352,35 @@ def api_reset_all(p: AllParams | None = None):
     reset_all((p or AllParams()).items)
     admin_db().processes.delete_one({"_id": "race_all"})
     return {"ok": True}
+
+
+def _now():
+    from once.grants import now
+    return now()
+
+
+@app.post("/api/stop_all")
+def api_stop_all():
+    """Stop the race: end the race_all supervisor first (so nothing restarts), then SIGKILL every running agent."""
+    proc = _race_all["proc"]
+    if proc and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+    d = admin_db()
+    for sweep in range(2):                     # second sweep catches an agent that registered mid-stop
+        for p in d.processes.find({"status": {"$in": ["running", "starting"]}, "_id": {"$ne": "race_all"}}):
+            if p.get("pid"):
+                try:
+                    os.kill(p["pid"], signal.SIGKILL)
+                except (ProcessLookupError, TypeError):
+                    pass
+            d.processes.update_one({"_id": p["_id"]}, {"$set": {"status": "stopped", "pid": None}})
+        if sweep == 0:
+            import time
+            time.sleep(0.5)
+    d.processes.update_one({"_id": "race_all", "status": "running"}, {"$set": {"status": "stopped", "stopped_at": _now()}})
+    return {"stopped": True}

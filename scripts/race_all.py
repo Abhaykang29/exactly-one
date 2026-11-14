@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
@@ -129,6 +130,10 @@ def board(detail: str | None = None) -> dict:
     procs = {p["_id"]: p for p in d.processes.find({})}
     W = worlds()
     out = {"run_id": run_id, "status": ra.get("status", "idle"), "items": n, "usecases": {}}
+    urls = [f"{W[s]}/truth/summary" if uc == "refunds" else f"{W[s]}/{cfg['system']}/truth"
+            for uc, cfg in USECASES.items() for s in STYLES]
+    with ThreadPoolExecutor(max_workers=len(urls)) as ex:      # 12 truth calls at once, not one by one
+        fetched = dict(zip(urls, ex.map(_get, urls)))
     for uc, cfg in USECASES.items():
         block = {"title": cfg["title"], "danger": cfg["danger"], "metric": cfg["metric"],
                  "metric_label": cfg["metric_label"], "agents": {}}
@@ -137,13 +142,13 @@ def board(detail: str | None = None) -> dict:
             p = procs.get(proc_id(uc, s), {})
             claimed, held = p.get("claimed_done", []), set(p.get("held", []))
             if uc == "refunds":
-                t = _get(f"{W[s]}/truth/summary") or {}
+                t = fetched.get(f"{W[s]}/truth/summary") or {}
                 per = {o: {"count": v.get("refunds", 0), "ok": v.get("refunds", 0) and v.get("emails", 0)}
                        for o, v in (t.get("per_order") or {}).items()}
                 twice, twice_cents = t.get("dup_refunds", 0), t.get("dup_refund_cents", 0)
                 labels = {o: o for o in per}
             else:
-                t = _get(f"{W[s]}/{cfg['system']}/truth") or {}
+                t = fetched.get(f"{W[s]}/{cfg['system']}/truth") or {}
                 its = items(uc, n)
                 labels = {i["item_id"]: i["label"] for i in its}
                 per = {i["item_id"]: {"count": (t.get("per_item") or {}).get(i["item_id"], {}).get("count", 0)}
