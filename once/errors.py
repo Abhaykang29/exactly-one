@@ -19,3 +19,13 @@ class SchemaError(Exception):
 
 class Unknown(Exception):
     """Timeout or 5xx: we do not know if the action landed. verify() decides."""
+
+
+class NeedsHuman(Exception):
+    """The decision must not be executed automatically (e.g. the LLM proposed more than the order amount).
+    run_effect records a `held` receipt with this reason and never acts."""
+
+    def __init__(self, reason: str, decision: dict | None = None):
+        self.reason = reason
+        self.decision = decision or {}
+        super().__init__(reason)

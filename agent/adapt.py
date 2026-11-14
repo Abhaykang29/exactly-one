@@ -28,7 +28,7 @@ def _llm_map(old: list[str], new: list[str]) -> dict | None:
         return None
     try:
         from langchain.chat_models import init_chat_model
-        m = init_chat_model(os.environ["MODEL"], temperature=0).with_structured_output(FieldMap)
+        m = init_chat_model(os.environ["MODEL"], temperature=0, timeout=30, max_retries=1).with_structured_output(FieldMap)
         r = m.invoke(f"A bank API renamed its refund request fields. Old required fields: {old}. "
                      f"New required fields: {new}. Return old_to_new mapping each old field name to the new "
                      f"name that carries the same value (include unchanged fields mapped to themselves).")

@@ -16,7 +16,7 @@ from pymongo.errors import DuplicateKeyError
 
 from once import crash
 from once.config import db
-from once.errors import Denied, SchemaError, Stopped, Unknown
+from once.errors import Denied, NeedsHuman, SchemaError, Stopped, Unknown
 from once.grants import KILL, authorize_and_insert_intent, now
 
 SETTLED = {"proven", "compensated", "denied", "held"}
@@ -108,6 +108,23 @@ def _insert_denied(spec: EffectSpec, decision: dict, reason: str) -> None:
         pass
 
 
+def _insert_held_for_human(spec: EffectSpec, e: NeedsHuman) -> dict:
+    """A decision that must not run automatically: record it as held, spend nothing, never act."""
+    t = now()
+    try:
+        db().effects.insert_one({
+            "_id": spec.key, "run_id": spec.run_id, "tenant": spec.tenant, "order_id": spec.order_id,
+            "tool": spec.tool, "decision": e.decision, "inputs": spec.inputs,
+            "authority": {"grant_id": spec.grant_id, "authorized": False, "checked_at": t},
+            "memory_used": [], "status": "held", "held_reason": e.reason, "attempts": 0,
+            "first_try_failed": False, "evidence": None, "created_at": t,
+        })
+        log(spec.key, "none", "held", f"({e.reason})")
+    except DuplicateKeyError:
+        pass
+    return _get(spec.key)
+
+
 def _proven(spec: EffectSpec, doc: dict, ev: dict, reconciled: bool = False) -> dict:
     if not _evidence_ok(doc["decision"], ev):
         return mark_held(spec.key, f"amount mismatch: decided {doc['decision'].get('amount_cents')}, "
@@ -129,7 +146,10 @@ def run_effect(spec: EffectSpec) -> dict:
         raise Stopped(f"kill switch set before {key}")
 
     if doc is None:                                        # RULE 1: write it down first
-        decision = spec.decide()                           # RULE 3: decided once, then frozen
+        try:
+            decision = spec.decide()                       # RULE 3: decided once, then frozen
+        except NeedsHuman as e:
+            return _insert_held_for_human(spec, e)
         amount = int(decision.get("amount_cents", spec.amount_cents))
         try:
             authorize_and_insert_intent(spec, decision, amount)

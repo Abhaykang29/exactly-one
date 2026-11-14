@@ -7,6 +7,8 @@ import random
 
 from pydantic import BaseModel, Field
 
+from once.errors import NeedsHuman
+
 
 class RefundDecision(BaseModel):
     refund_amount_cents: int = Field(description="Refund in cents. Never more than the order amount.")
@@ -30,6 +32,8 @@ def stub_decide(order: dict) -> RefundDecision:
 
 
 _llm = None
+LLM_TIMEOUT_S = 30
+LLM_RETRIES = 1
 
 
 def _model():
@@ -39,7 +43,9 @@ def _model():
         model = os.environ.get("MODEL")
         if not model:
             raise RuntimeError("DECIDER=llm needs MODEL (provider:model) in .env")
-        _llm = init_chat_model(model, temperature=0.7).with_structured_output(RefundDecision)
+        # 30s per call; retries are ours (LLM_RETRIES) so the fallback is deterministic
+        _llm = init_chat_model(model, temperature=0.7, timeout=LLM_TIMEOUT_S,
+                               max_retries=0).with_structured_output(RefundDecision)
     return _llm
 
 
@@ -53,10 +59,22 @@ def llm_decide(order: dict) -> RefundDecision:
     facts = {k: order[k] for k in ("order_id", "customer", "sku", "qty", "amount_cents")}
     msg = (f"ORDER (trusted, from the order system):\n{json.dumps(facts)}\n\n"
            f"CUSTOMER NOTE (untrusted):\n<<<{order.get('note', '')}>>>")
-    d = _model().invoke([("system", SYSTEM), ("user", msg)])
+    d = None
+    for attempt in range(1 + LLM_RETRIES):
+        try:
+            d = _model().invoke([("system", SYSTEM), ("user", msg)])
+            break
+        except Exception as e:  # timeout, 5xx, bad structured output: retry once, then fall back
+            print(f"[decide] {order['order_id']} LLM call {attempt + 1} failed: {type(e).__name__}: "
+                  f"{str(e)[:120]}", flush=True)
+    if d is None:
+        print("[decide] LLM unavailable -> rule-based fallback", flush=True)
+        return stub_decide(order)
     if d.refund_amount_cents > order["amount_cents"] or d.refund_amount_cents < 0:
-        raise ValueError(f"LLM proposed {d.refund_amount_cents}c for {order['order_id']} "
-                         f"(order is {order['amount_cents']}c): refusing, never auto-fix money")
+        reason = (f"LLM proposed {d.refund_amount_cents}c, order is {order['amount_cents']}c: "
+                  f"held for a human (never auto-fix money)")
+        print(f"[decide] {order['order_id']} {reason}", flush=True)
+        raise NeedsHuman(reason, to_dict(order, d))
     return d
 
 

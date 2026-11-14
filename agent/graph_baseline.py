@@ -13,7 +13,7 @@ from agent.decide import decide, to_dict
 from agent.tools import World
 from once import crash
 from once.config import db
-from once.errors import SchemaError, Unknown
+from once.errors import NeedsHuman, SchemaError, Unknown
 
 
 class State(TypedDict, total=False):
@@ -57,7 +57,11 @@ def build_graph(world: World, n_orders: int, process_one: Callable[[dict, dict],
 def make_process(world: World, run_id: str):
     def process_one(order: dict, state: dict) -> dict:
         oid = order["order_id"]
-        d = to_dict(order, decide(order))           # re-decided on every re-run of this node
+        try:
+            d = to_dict(order, decide(order))       # re-decided on every re-run of this node
+        except NeedsHuman as e:
+            print(f"[baseline] {oid} {e.reason}", flush=True)
+            return {"held": [oid]}
         key = f"{run_id}:{oid}"
         for attempt in range(3):                    # retry up to 2 times on timeout/5xx
             try:
