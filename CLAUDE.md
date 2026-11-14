@@ -605,3 +605,4 @@ to the terminal table from `race.py --headless`) → drift and memory → grants
 - Atlas Model API embedding response is read as `data[].embedding` (verify against the live API in M0).
 - A memory's `fix` carries `schema_version` (from `GET /bank/schema` when the candidate was made); `adapt_bank` applies a recalled fix only if the bank currently reports that version, otherwise it attempts normally.
 - Grant reset sizes `budget_cents` to max(300000, 2 × the total value of the orders the race will refund) so a race never hits a false denial; `race.py`, `/api/reset` and `/api/regrant` all use it.
+- LLM is Meta's OpenAI-compatible Model API: `MODEL=openai:muse-wonder-1.0` with `OPENAI_BASE_URL`; chat-completions structured output works as-is (no `use_responses_api`/`json_mode` needed).

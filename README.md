@@ -71,6 +71,9 @@ The big chaos run uses the stub decider for speed; the live demo uses the real m
 
 - 10:56 M0–M6 code written: once/ layer, agents, mock world, race/chaos/demo scripts, tests, console. Smoke-tested in-process; Atlas run pending `.env`
 - 12:02 M0+M2 verified on Atlas: setup_db checklist green, memory_vec READY (1024 dims), pytest 11 passed
+- 12:19 Agent user proven read-only on grants (test). Memory fixes gated on bank schema_version. Grant budget >= 2x race order value.
+- 12:19 M3 on Atlas, stub decider, 10 orders, crash 0.2: standard 14 refunds paid twice, exactly-once 0
+- 12:19 Real LLM on (Meta muse-wonder-1.0, OpenAI-compatible, structured output): race 10 orders / crash 0.2 took 278s, standard 21 paid twice vs exactly-once 0; muse-spark-1.3 took 275s (15 vs 0). Traces in LangSmith project exactly-once
 
 ## Disclosure
 
