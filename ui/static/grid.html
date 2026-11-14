@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exactly Once: four agents</title>
+<style>
+  :root { --ink: #000; --muted: #555B61; --rule: #D5D9DE; --red: #D7261E; --green: #00684A; --amber: #B45309;
+          --fs: clamp(22px, 2.5vh, 34px);
+          --sans: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+          --mono: ui-monospace, "SF Mono", Menlo, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: #fff; color: var(--ink); font-family: var(--sans); font-size: var(--fs);
+         font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 10px 28px;
+           border-bottom: 2px solid var(--ink); }
+  h1 { margin: 0; font-size: calc(var(--fs) * 1.45); font-weight: 800; letter-spacing: -.3px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .controls button { font: inherit; font-size: var(--fs); color: var(--muted); background: #fff; border: 1px solid var(--rule);
+                     border-radius: 6px; padding: 3px 10px 3px 6px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+  .controls button:hover { color: var(--ink); border-color: var(--ink); }
+  .controls button:disabled { opacity: .45; cursor: default; }
+  kbd { font-family: var(--sans); font-size: var(--fs); font-weight: 700; color: var(--ink); border: 1px solid var(--rule);
+        border-radius: 4px; padding: 0 5px; background: #F3F5F7; }
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; min-height: 0; }
+  .block { padding: 10px 24px 8px; display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
+  .block:hover { background: #FAFBFC; }
+  .block:nth-child(odd) { border-right: 2px solid var(--ink); }
+  .block:nth-child(-n+2) { border-bottom: 2px solid var(--ink); }
+  .block h2 { margin: 0; font-size: calc(var(--fs) * 1.25); font-weight: 800; }
+  .danger { color: var(--muted); }
+  .nums { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: end; margin-top: 4px; }
+  .cell { min-width: 0; border-top: 1px solid var(--rule); padding-top: 4px; }
+  .lab { line-height: 1.12; font-weight: 600; }
+  .lab .sub { display: block; color: var(--muted); font-weight: 400; }
+  .num { font-size: clamp(48px, 9.5vh, 120px); font-weight: 800; line-height: 1; letter-spacing: -1.5px;
+         white-space: nowrap; overflow: hidden; }
+  .red { color: var(--red); } .green { color: var(--green); } .amber { color: var(--amber); } .idle { color: var(--rule); }
+  footer { display: flex; justify-content: space-between; gap: 20px; padding: 6px 28px; border-top: 2px solid var(--ink);
+           color: var(--muted); }
+  footer b { color: var(--ink); }
+  dialog { border: 2px solid var(--ink); border-radius: 10px; padding: 20px 26px; width: min(1100px, 94vw); max-height: 88vh; }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog h3 { margin: 0 0 8px; font-size: calc(var(--fs) * 1.25); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--fs); }
+  th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--ink); padding: 4px 8px; }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--rule); }
+  td.n { text-align: center; font-weight: 800; }
+  .tx { font-family: var(--mono); color: var(--green); }
+  .close { font: inherit; font-size: var(--fs); margin-top: 12px; padding: 6px 16px; border: 2px solid var(--ink);
+           background: #fff; border-radius: 6px; cursor: pointer; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Same crashes, same AI. Three ways to build the agent.</h1>
+    <div class="controls">
+      <button id="b-start"><kbd>S</kbd><span>Start all</span></button>
+      <button id="b-crash"><kbd>C</kbd>Crash everything</button>
+      <button id="b-reset"><kbd>X</kbd>Reset</button>
+    </div>
+  </header>
+  <main id="grid"></main>
+  <footer>
+    <span>Refunds decided by Meta Muse Wonder; other blocks use rule-based decisions for speed.</span>
+    <span id="status"></span>
+  </footer>
+</div>
+<dialog id="detail"><div id="detail-body"></div><button class="close" id="detail-close">Close</button></dialog>
+
+<script>
+const ORDER = ["refunds", "rebalancing", "offboarding", "alerts"];
+const STYLES = [["naive", "Naive LangGraph"], ["textbook", "Best-practice LangGraph"], ["once", "Exactly Once"]];
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function money(c) {
+  const d = (c || 0) / 100;
+  return d >= 1000 ? "$" + Math.round(d).toLocaleString("en-US") : "$" + d.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+let B = null;
+
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function fit(el) {                    // shrink a big number until it fits its column
+  el.style.fontSize = "";
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollWidth > el.clientWidth && size > 36) { size -= 4; el.style.fontSize = size + "px"; }
+}
+
+function render(b) {
+  B = b;
+  const started = !!b.run_id;
+  $("#grid").innerHTML = ORDER.map((uc) => {
+    const blk = b.usecases[uc];
+    const cells = STYLES.map(([s, label], idx) => {
+      const x = blk.agents[s];
+      const v = x.value || 0;
+      const cls = !started ? "idle" : v > 0 ? (idx === 1 ? "amber" : "red") : "green";
+      const shown = blk.metric === "money" ? money(v) : String(v);
+      let sub = blk.metric_label;
+      if (blk.metric === "alerts") sub = `${x.twice} sent twice · ${x.never_arrived} never arrived`;
+      return `<div class="cell"><div class="num ${cls}">${shown}</div>
+              <div class="lab">${label}<span class="sub">${esc(sub)} · ${x.crashes} crash${x.crashes === 1 ? "" : "es"}</span></div></div>`;
+    }).join("");
+    return `<section class="block" data-uc="${uc}"><h2>${esc(blk.title)}</h2><div class="danger">${esc(blk.danger)}</div>
+            <div class="nums">${cells}</div></section>`;
+  }).join("");
+  document.querySelectorAll(".num").forEach(fit);
+  const running = b.race_running || b.status === "running";
+  $("#b-start").disabled = running;
+  $("#b-start span").textContent = running ? "Running…" : "Start all";
+  $("#b-reset").disabled = running;
+  $("#status").innerHTML = b.run_id ? `run <b>${esc(b.run_id)}</b> · ${b.items} items each · <b>${running ? "running" : esc(b.status)}</b>` : "ready";
+}
+
+let inflight = false;
+async function poll() {
+  if (inflight) return; inflight = true;
+  try { render(await api("GET", "/api/usecases")); } catch (e) { console.warn(e.message); } finally { inflight = false; }
+}
+setInterval(poll, 1000); poll();
+
+const running = () => B && (B.race_running || B.status === "running");
+const act = (fn) => async () => { try { await fn(); } catch (e) { console.warn(e.message); } poll(); };
+const start = act(() => !running() && api("POST", "/api/race_all", { items: 6, crash_prob: 0.2 }));
+const crash = act(() => api("POST", "/api/crash_all"));
+const reset = act(() => !running() && api("POST", "/api/reset_all", { items: 6, crash_prob: 0.2 }));
+$("#b-start").onclick = start; $("#b-crash").onclick = crash; $("#b-reset").onclick = reset;
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || $("#detail").open || running()) return;   // shortcuts off while racing
+  const f = { s: start, c: crash, x: reset }[e.key.toLowerCase()];
+  if (f) { e.preventDefault(); f(); }
+});
+
+async function openDetail(uc) {
+  const b = await api("GET", "/api/usecases?detail=" + encodeURIComponent(uc));
+  const blk = b.usecases[uc];
+  const rows = (blk.rows || []).map((r) => {
+    const n = (s, idx) => { const v = r[s] ?? 0; const bad = v > 1 || r[s + "_false"];
+      return `<td class="n ${bad ? (idx === 1 ? "amber" : "red") : v === 1 ? "green" : ""}">${v}${r[s + "_false"] ? " (said done)" : ""}</td>`; };
+    return `<tr><td>${esc(r.item)}</td>${n("naive", 0)}${n("textbook", 1)}${n("once", 2)}
+            <td>${r.once_proof ? `<span class="tx">${esc(r.once_proof)}</span>` : esc(r.once_status || "")}</td></tr>`;
+  }).join("");
+  $("#detail-body").innerHTML = `<h3>${esc(blk.title)}: how many times each action happened</h3>
+    <table><tr><th>item</th><th>Naive</th><th>Best-practice</th><th>Exactly Once</th><th>proof (Exactly Once)</th></tr>${rows}</table>`;
+  if (!$("#detail").open) $("#detail").showModal();
+}
+$("#grid").addEventListener("click", (e) => { const b = e.target.closest(".block"); if (b) openDetail(b.dataset.uc).catch((x) => console.warn(x.message)); });
+$("#detail-close").onclick = () => $("#detail").close();
+</script>
+</body>
+</html>

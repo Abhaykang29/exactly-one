@@ -287,3 +287,61 @@ def race_log():
     f = ROOT / "race.log"
     lines = f.read_text().splitlines()[-40:] if f.exists() else []
     return {"lines": lines}
+
+
+# ---------------- grid: four use cases x three agent styles (additive)
+
+_race_all: dict = {"proc": None}
+
+
+@app.get("/grid")
+def grid():
+    return FileResponse(STATIC / "grid.html")
+
+
+@app.get("/api/usecases")
+def api_usecases(detail: str | None = None):
+    from scripts.race_all import board
+    b = board(detail)
+    proc = _race_all["proc"]
+    b["race_running"] = bool(proc and proc.poll() is None)
+    return ok(b)
+
+
+class AllParams(BaseModel):
+    items: int = 6
+    crash_prob: float = 0.2
+
+
+@app.post("/api/race_all")
+def api_race_all(p: AllParams):
+    if (_race_all["proc"] and _race_all["proc"].poll() is None) or (_race["proc"] and _race["proc"].poll() is None):
+        return JSONResponse({"error": "a race is already running"}, status_code=409)
+    log = open(ROOT / "race.log", "w")
+    _race_all["proc"] = subprocess.Popen(
+        [sys.executable, "-m", "scripts.race_all", "--headless", "--verbose", "--items", str(p.items),
+         "--crash-prob", str(p.crash_prob)], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+        env={k: v for k, v in os.environ.items() if k != "ONCE_CLIENT"})
+    return {"started": True}
+
+
+@app.post("/api/crash_all")
+def api_crash_all():
+    killed = []
+    for p in admin_db().processes.find({"status": "running", "pid": {"$ne": None}}):
+        try:
+            os.kill(p["pid"], signal.SIGKILL)
+            killed.append(p["_id"])
+        except (ProcessLookupError, TypeError):
+            pass
+    return {"killed": killed}
+
+
+@app.post("/api/reset_all")
+def api_reset_all(p: AllParams | None = None):
+    if _race_all["proc"] and _race_all["proc"].poll() is None:
+        return JSONResponse({"error": "race running"}, status_code=409)
+    from scripts.race_all import reset_all
+    reset_all((p or AllParams()).items)
+    admin_db().processes.delete_one({"_id": "race_all"})
+    return {"ok": True}

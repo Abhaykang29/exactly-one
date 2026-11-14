@@ -5,7 +5,7 @@
 """
 from fastapi import FastAPI
 
-from mocks import bank, chaos, email, inventory, orders, truth
+from mocks import actions, bank, chaos, email, inventory, orders, truth
 
 app = FastAPI(title="Exactly Once mock world")
 for m in (orders, bank, inventory, email, chaos, truth):
@@ -15,3 +15,6 @@ for m in (orders, bank, inventory, email, chaos, truth):
 @app.get("/health")
 def health():
     return {"ok": True, "db": chaos.wdb().name}
+
+
+app.include_router(actions.router)   # generic /{system}/actions last, so it never shadows the core routes

@@ -39,6 +39,19 @@ def reset_grant(grant_id: str, d=None, budget_cents: int = DEFAULT_BUDGET) -> No
                               upsert=True)
 
 
+def reset_usecase_grant(uc: str, tool: str, budget_cents: int, max_per_action_cents: int, d=None) -> str:
+    """One grant per extra use case (admin only): the agent can read it, never write it."""
+    d = d if d is not None else admin_db()
+    gid = f"g_uc_{uc}"
+    d.grants.replace_one({"_id": gid}, {
+        "_id": gid, "agent": f"{uc}-agent", "issued_by": ISSUER, "tools": [tool],
+        "max_per_action_cents": max(1, max_per_action_cents), "budget_cents": max(1, budget_cents),
+        "expires_at": now() + timedelta(hours=8), "revoked": False, "revoked_at": None, "revoked_by": None},
+        upsert=True)
+    d.grant_usage.replace_one({"_id": gid}, {"_id": gid, "spent_cents": 0, "uses": 0, "revoked": False}, upsert=True)
+    return gid
+
+
 def reset_demo(d=None, budget_cents: int = DEFAULT_BUDGET) -> None:
     reset_grant("g_ops_demo", d, budget_cents)
     reset_grant("g_manager_rollback", d)

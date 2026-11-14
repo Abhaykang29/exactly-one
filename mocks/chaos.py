@@ -38,7 +38,8 @@ class Switch(BaseModel):
 
 @router.post("/chaos")
 def set_chaos(s: Switch):
-    if (s.system, s.mode) not in MODES:
+    generic = s.system not in {"bank", "inventory", "email"} and s.mode in ("timeout_after_commit", "fake_ok")
+    if (s.system, s.mode) not in MODES and not generic:
         return {"error": f"unknown chaos {s.system}:{s.mode}", "modes": sorted(f"{a}:{b}" for a, b in MODES)}
     wdb().chaos.update_one({"_id": f"{s.system}:{s.mode}"},
                            {"$set": {"system": s.system, "mode": s.mode, "rate": s.rate, "enabled": s.enabled}},
