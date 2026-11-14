@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 .mongo-local/
 race.log
+.DS_Store
